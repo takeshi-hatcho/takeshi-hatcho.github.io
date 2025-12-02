@@ -69,11 +69,6 @@
       color: #333;
     }
 
-    .btn-danger {
-      background: #e53935;
-      color: white;
-    }
-
     .btn:active {
       opacity: 0.85;
     }
@@ -172,28 +167,29 @@
   </main>
 
 <script>
-  const MAX_RUNNERS = 10;
-  const STORAGE_KEY = "lapCounterData_v4";
+  // ES5だけで書き直した iPad 対応版
 
-  let state = {
+  var MAX_RUNNERS = 10;
+  var STORAGE_KEY = "lapCounterData_v5";
+
+  var state = {
     goalLaps: 42,
     runners: []
   };
 
-  /* 初期化 */
   function initState() {
-    let saved = null;
+    var saved = null;
     try {
       saved = localStorage.getItem(STORAGE_KEY);
-    } catch {}
+    } catch (e) {}
 
     if (saved) {
       try {
-        const parsed = JSON.parse(saved);
-        if (parsed.runners && typeof parsed.goalLaps === "number") {
+        var parsed = JSON.parse(saved);
+        if (parsed && parsed.runners && typeof parsed.goalLaps === "number") {
           state = parsed;
         }
-      } catch {}
+      } catch (e2) {}
     }
 
     while (state.runners.length < MAX_RUNNERS) {
@@ -201,123 +197,157 @@
     }
   }
 
-  const saveState = () =>
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  function saveState() {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    } catch (e) {}
+  }
 
-  /* iPad対応 CSVダウンロード関数 */
+  // iPad / PC 両対応 CSV ダウンロード
   function downloadCsv(csvText) {
-    const fileName = "lap_data.csv";
-    const ua = navigator.userAgent;
-    const isIOS = /iP(hone|od|ad)/.test(ua);
+    var bom = "\uFEFF"; // UTF-8 BOM（Excelの文字化け対策）
+    var csvWithBom = bom + csvText;
+    var fileName = "lap_data.csv";
+    var ua = navigator.userAgent;
+    var isIOS = /iP(hone|od|ad)/.test(ua);
 
     if (isIOS) {
-      // iPad/iPhone → 新しいタブで開いて保存させる
-      const dataUrl = "data:text/csv;charset=utf-8," + encodeURIComponent(csvText);
-      const win = window.open(dataUrl, "_blank");
+      // iPad/iPhone → 新しいタブで開いて「ファイルに保存」してもらう
+      var dataUrl = "data:text/csv;charset=utf-8," + encodeURIComponent(csvWithBom);
+      var win = window.open(dataUrl, "_blank");
       if (!win) {
         alert("CSV を開けませんでした。ポップアップブロックを解除してください。");
       } else {
-        alert("開いた画面の共有ボタン（□↑）→『ファイルに保存』で保存できます。");
+        alert("開いた画面の共有ボタン（□↑）→「ファイルに保存」で保存できます。");
       }
     } else {
       // PCなど → 自動ダウンロード
-      const blob = new Blob([csvText], { type: "text/csv;charset=utf-8;" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = fileName;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      try {
+        var blob = new Blob([csvWithBom], { type: "text/csv;charset=utf-8;" });
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement("a");
+        a.href = url;
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      } catch (e) {
+        alert("このブラウザではCSVの自動ダウンロードに対応していません。");
+      }
     }
   }
 
-  /* テーブル描画 */
   function renderTable() {
-    const tbody = document.getElementById("runnerTableBody");
+    var tbody = document.getElementById("runnerTableBody");
     tbody.innerHTML = "";
 
-    state.runners.forEach((runner, index) => {
-      const tr = document.createElement("tr");
+    for (var i = 0; i < state.runners.length; i++) {
+      (function(index) {
+        var runner = state.runners[index];
+        var tr = document.createElement("tr");
 
-      // 色分け
-      const goal = state.goalLaps;
-      if (runner.laps >= goal) tr.classList.add("finished");
-      else if (runner.laps >= goal - 5 && runner.laps > 0)
-        tr.classList.add("near-goal");
+        var goal = state.goalLaps;
+        if (runner.laps >= goal) {
+          tr.className = "finished";
+        } else if (runner.laps >= goal - 5 && runner.laps > 0) {
+          tr.className = "near-goal";
+        }
 
-      tr.innerHTML = `
-        <td>${index + 1}</td>
-        <td><input type="text" value="${runner.bib}" /></td>
-        <td><input type="text" value="${runner.name}" /></td>
-        <td class="lap-cell">${runner.laps}</td>
-        <td>
-          <div class="row-buttons">
-            <button class="btn btn-primary plus">＋1</button>
-            <button class="btn btn-secondary minus">−1</button>
-          </div>
-        </td>
-      `;
+        var html = "";
+        html += "<td>" + (index + 1) + "</td>";
+        html += '<td><input type="text" value="' + (runner.bib || "") + '"></td>';
+        html += '<td><input type="text" value="' + (runner.name || "") + '"></td>';
+        html += '<td class="lap-cell">' + runner.laps + "</td>";
+        html += '<td><div class="row-buttons">';
+        html += '<button class="btn btn-primary plus">＋1</button>';
+        html += '<button class="btn btn-secondary minus">−1</button>';
+        html += "</div></td>";
 
-      const inputs = tr.querySelectorAll("input");
-      inputs[0].addEventListener("input", e => {
-        state.runners[index].bib = e.target.value;
-        saveState();
-      });
+        tr.innerHTML = html;
 
-      inputs[1].addEventListener("input", e => {
-        state.runners[index].name = e.target.value;
-        saveState();
-      });
+        var inputs = tr.getElementsByTagName("input");
+        inputs[0].oninput = function(e) {
+          state.runners[index].bib = e.target.value;
+          saveState();
+        };
+        inputs[1].oninput = function(e) {
+          state.runners[index].name = e.target.value;
+          saveState();
+        };
 
-      tr.querySelector(".plus").onclick = () => {
-        state.runners[index].laps++;
-        saveState();
-        renderTable();
-      };
+        var plusBtn = tr.getElementsByClassName("plus")[0];
+        var minusBtn = tr.getElementsByClassName("minus")[0];
 
-      tr.querySelector(".minus").onclick = () => {
-        state.runners[index].laps = Math.max(0, state.runners[index].laps - 1);
-        saveState();
-        renderTable();
-      };
+        plusBtn.onclick = function() {
+          state.runners[index].laps += 1;
+          saveState();
+          renderTable();
+        };
 
-      tbody.appendChild(tr);
-    });
+        minusBtn.onclick = function() {
+          if (state.runners[index].laps > 0) {
+            state.runners[index].laps -= 1;
+            saveState();
+            renderTable();
+          }
+        };
+
+        tbody.appendChild(tr);
+      })(i);
+    }
   }
 
-  /* イベント類 */
-  document.getElementById("goalLaps").onchange = e => {
-    state.goalLaps = Number(e.target.value);
-    saveState();
-    renderTable();
-  };
+  function initControls() {
+    var goalInput = document.getElementById("goalLaps");
+    var resetAllButton = document.getElementById("resetAllButton");
+    var clearDataButton = document.getElementById("clearDataButton");
+    var exportCsvButton = document.getElementById("exportCsvButton");
 
-  document.getElementById("resetAllButton").onclick = () => {
-    if (!confirm("全員の周回数を0にしますか？")) return;
-    state.runners.forEach(r => (r.laps = 0));
-    saveState();
-    renderTable();
-  };
+    goalInput.value = state.goalLaps;
+    goalInput.onchange = function() {
+      var val = parseInt(goalInput.value, 10);
+      if (!isNaN(val) && val > 0) {
+        state.goalLaps = val;
+        saveState();
+        renderTable();
+      }
+    };
 
-  document.getElementById("clearDataButton").onclick = () => {
-    if (!confirm("保存データを消去しますか？")) return;
-    localStorage.removeItem(STORAGE_KEY);
-    location.reload();
-  };
+    resetAllButton.onclick = function() {
+      if (!confirm("全員の周回数を0にしますか？")) return;
+      for (var i = 0; i < state.runners.length; i++) {
+        state.runners[i].laps = 0;
+      }
+      saveState();
+      renderTable();
+    };
 
-  document.getElementById("exportCsvButton").onclick = () => {
-    let csv = "No,ゼッケン,氏名,周回数
-";
-    state.runners.forEach((r, i) => {
-      csv += `${i + 1},${r.bib},${r.name},${r.laps}
-`;
-    });
-    downloadCsv(csv);
-  };
+    clearDataButton.onclick = function() {
+      if (!confirm("保存データを消去しますか？")) return;
+      try {
+        localStorage.removeItem(STORAGE_KEY);
+      } catch (e) {}
+      state.goalLaps = 42;
+      state.runners = [];
+      initState();
+      goalInput.value = state.goalLaps;
+      renderTable();
+    };
 
+    exportCsvButton.onclick = function() {
+      var csv = "No,ゼッケン,氏名,周回数\n";
+      for (var i = 0; i < state.runners.length; i++) {
+        var r = state.runners[i];
+        csv += (i + 1) + "," + (r.bib || "") + "," + (r.name || "") + "," + r.laps + "\n";
+      }
+      downloadCsv(csv);
+    };
+  }
+
+  // 初期化＆描画
   initState();
+  initControls();
   renderTable();
 </script>
 </body>
