@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <title>周回カウンター（5kmマラソン）</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <style>
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      margin: 0;
+      padding: 0;
+      background: #f5f5f5;
+    }
+
+    header {
+      background: #1976d2;
+      color: #fff;
+      padding: 0.7rem 1rem;
+      text-align: center;
+    }
+
+    header h1 {
+      margin: 0;
+      font-size: 1.2rem;
+    }
+
+    header p {
+      margin: 0.3rem 0 0;
+      font-size: 0.9rem;
+    }
+
+    main {
+      padding: 0.8rem;
+      max-width: 900px;
+      margin: 0 auto;
+    }
+
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      align-items: center;
+      margin-bottom: 0.8rem;
+    }
+
+    .controls label {
+      font-size: 0.9rem;
+    }
+
+    .controls input[type="number"] {
+      width: 5rem;
+      padding: 0.3rem;
+      font-size: 1rem;
+    }
+
+    .btn {
+      padding: 0.4rem 0.8rem;
+      font-size: 0.9rem;
+      border-radius: 0.5rem;
+      border: none;
+      cursor: pointer;
+      touch-action: manipulation;
+    }
+
+    .btn-primary {
+      background: #1976d2;
+      color: white;
+    }
+
+    .btn-secondary {
+      background: #eeeeee;
+      color: #333;
+    }
+
+    .btn-danger {
+      background: #e53935;
+      color: white;
+    }
+
+    .btn:active {
+      opacity: 0.8;
+    }
+
+    .table-wrapper {
+      overflow-x: auto;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: #fff;
+      border-radius: 0.5rem;
+      overflow: hidden;
+    }
+
+    thead {
+      background: #e0e0e0;
+    }
+
+    th, td {
+      padding: 0.4rem;
+      text-align: center;
+      border-bottom: 1px solid #ddd;
+      font-size: 0.9rem;
+      white-space: nowrap;
+    }
+
+    th {
+      font-weight: 600;
+    }
+
+    tr:last-child td {
+      border-bottom: none;
+    }
+
+    input[type="text"], input[type="number"].small {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 0.3rem;
+      font-size: 0.9rem;
+    }
+
+    .lap-cell {
+      font-size: 1.1rem;
+      font-weight: bold;
+    }
+
+    .row-buttons {
+      display: flex;
+      justify-content: center;
+      gap: 0.3rem;
+    }
+
+    .row-buttons .btn {
+      min-width: 2.5rem;
+      padding: 0.3rem 0;
+      font-size: 1rem;
+    }
+
+    /* 周回数に応じた色分け */
+    tr.near-goal {
+      background: #fff9c4; /* ゴール目前（黄色） */
+    }
+
+    tr.finished {
+      background: #c8e6c9; /* ゴール達成（うすい緑） */
+    }
+
+    .note {
+      margin-top: 0.4rem;
+      font-size: 0.8rem;
+      color: #555;
+    }
+
+    @media (max-width: 600px) {
+      header h1 {
+        font-size: 1rem;
+      }
+      th, td {
+        font-size: 0.8rem;
+        padding: 0.3rem;
+      }
+      .row-buttons .btn {
+        min-width: 2.2rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>周回カウンター（5kmマラソン用）</h1>
+    <p>1周120m ／ 目標周回数：42周（変更可能）</p>
+  </header>
+
+  <main>
+    <section class="controls">
+      <label>
+        目標周回数：
+        <input id="goalLaps" type="number" min="1" value="42" />
+      </label>
+
+      <button class="btn btn-secondary" id="resetAllButton">
+        全員リセット
+      </button>
+
+      <button class="btn btn-primary" id="exportCsvButton">
+        CSVダウンロード
+      </button>
+
+      <button class="btn btn-secondary" id="clearDataButton">
+        保存データ消去
+      </button>
+    </section>
+
+    <div class="note">
+      ・児童は最大10名まで登録できます。<br />
+      ・行をタップして +1 ボタンを押すだけで周回数が増えます。<br />
+      ・周回数が目標−5 周で黄色、目標達成で緑色になります。<br />
+      ・データはこのiPad内のブラウザ（ローカルストレージ）だけに保存されます。
+    </div>
+
+    <section class="table-wrapper">
+      <table>
+        <thead>
+          <tr>
+            <th>No.</th>
+            <th>ゼッケン</th>
+            <th>氏名</th>
+            <th>周回数</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody id="runnerTableBody">
+          <!-- 10行をJSで生成 -->
+        </tbody>
+      </table>
+    </section>
+  </main>
+
+  <script>
+    var MAX_RUNNERS = 10;
+    var STORAGE_KEY = "lapCounterData_v1";
+
+    var state = {
+      goalLaps: 42,
+      runners: [] // {bib:'', name:'', laps:0}
+    };
+
+    function initState() {
+      var saved = null;
+      try {
+        saved = localStorage.getItem(STORAGE_KEY);
+      } catch (e) {
+        console.warn("localStorage error:", e);
+      }
+
+      if (saved) {
+        try {
+          var parsed = JSON.parse(saved);
+          if (parsed && parsed.runners && typeof parsed.goalLaps === "number") {
+            state.goalLaps = parsed.goalLaps;
+            state.runners = parsed.runners.slice(0, MAX_RUNNERS);
+          }
+        } catch (e2) {
+          console.warn("parse error:", e2);
+        }
+      }
+
+      while (state.runners.length < MAX_RUNNERS) {
+        state.runners.push({ bib: "", name: "", laps: 0 });
+      }
+    }
+
+    function saveState() {
+      var data = {
+        goalLaps: state.goalLaps,
+        runners: state.runners
+      };
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+      } catch (e) {
+        console.warn("save error:", e);
+      }
+    }
+
+    function renderTable() {
+      var tbody = document.getElementById("runnerTableBody");
+      tbody.innerHTML = "";
+
+      for (var i = 0; i < state.runners.length; i++) {
+        (function (index) {
+          var runner = state.runners[index];
+          var tr = document.createElement("tr");
+
+          var goal = state.goalLaps || 0;
+          if (goal > 0) {
+            if (runner.laps >= goal) {
+              tr.classList.add("finished");
+            } else if (runner.laps >= goal - 5 && runner.laps > 0) {
+              tr.classList.add("near-goal");
+            }
+          }
+
+          var tdNo = document.createElement("td");
+          tdNo.textContent = index + 1;
+          tr.appendChild(tdNo);
+
+          var tdBib = document.createElement("td");
+          var bibInput = document.createElement("input");
+          bibInput.type = "text";
+          bibInput.value = runner.bib || "";
+          bibInput.placeholder = "例: 1";
+          bibInput.addEventListener("input", function () {
+            state.runners[index].bib = bibInput.value.replace(/^\s+|\s+$/g, "");
+            saveState();
+          });
+          tdBib.appendChild(bibInput);
+          tr.appendChild(tdBib);
+
+          var tdName = document.createElement("td");
+          var nameInput = document.createElement("input");
+          nameInput.type = "text";
+          nameInput.value = runner.name || "";
+          nameInput.placeholder = "児童名";
+          nameInput.addEventListener("input", function () {
+            state.runners[index].name = nameInput.value.replace(/^\s+|\s+$/g, "");
+            saveState();
+          });
+          tdName.appendChild(nameInput);
+          tr.appendChild(tdName);
+
+          var tdLaps = document.createElement("td");
+          tdLaps.className = "lap-cell";
+          tdLaps.textContent = runner.laps;
+          tr.appendChild(tdLaps);
+
+          var tdButtons = document.createElement("td");
+          var btnContainer = document.createElement("div");
+          btnContainer.className = "row-buttons";
+
+          var plusBtn = document.createElement("button");
+          plusBtn.className = "btn btn-primary";
+          plusBtn.textContent = "+";
+          plusBtn.addEventListener("click", function (e) {
+            e.stopPropagation();
+            incrementLap(index);
+          });
+
+          var minusBtn = document.createElement("button");
+          minusBtn.className = "btn btn-secondary";
+          minusBtn.textContent = "−";
+          minusBtn.addEventListener("click", function (e) {
+            e.stopPropagation();
+            decrementLap(index);
+          });
+
+          btnContainer.appendChild(plusBtn);
+          btnContainer.appendChild(minusBtn);
+          tdButtons.appendChild(btnContainer);
+          tr.appendChild(tdButtons);
+
+          tr.addEventListener("click", function () {
+            incrementLap(index);
+          });
+
+          tbody.appendChild(tr);
+        })(i);
+      }
+    }
+
+    function incrementLap(index) {
+      state.runners[index].laps += 1;
+      saveState();
+      renderTable();
+    }
+
+    function decrementLap(index) {
+      if (state.runners[index].laps > 0) {
+        state.runners[index].laps -= 1;
+        saveState();
+        renderTable();
+      }
+    }
+
+    function initControls() {
+      var goalInput = document.getElementById("goalLaps");
+      var resetAllButton = document.getElementById("resetAllButton");
+      var exportCsvButton = document.getElementById("exportCsvButton");
+      var clearDataButton = document.getElementById("clearDataButton");
+
+      goalInput.value = state.goalLaps;
+      goalInput.addEventListener("input", function () {
+        var val = parseInt(goalInput.value, 10);
+        if (!isNaN(val) && val > 0) {
+          state.goalLaps = val;
+          saveState();
+          renderTable();
+        }
+      });
+
+      resetAllButton.addEventListener("click", function () {
+        if (!confirm("全員の周回数を0にリセットしますか？")) return;
+        for (var i = 0; i < state.runners.length; i++) {
+          state.runners[i].laps = 0;
+        }
+        saveState();
+        renderTable();
+      });
+
+      clearDataButton.addEventListener("click", function () {
+        if (!confirm("ゼッケン・氏名・周回数など、保存データをすべて消去しますか？")) return;
+        try {
+          localStorage.removeItem(STORAGE_KEY);
+        } catch (e) {}
+        state.goalLaps = 42;
+        state.runners = [];
+        initState();
+        document.getElementById("goalLaps").value = state.goalLaps;
+        renderTable();
+      });
+
+      exportCsvButton.addEventListener("click", function () {
+        exportCsv();
+      });
+    }
+
+    function exportCsv() {
+      var csv = "No.,ゼッケン,氏名,周回数\n";
+      for (var i = 0; i < state.runners.length; i++) {
+        var r = state.runners[i];
+        var no = i + 1;
+        var bib = (r.bib || "").replace(/"/g, '""');
+        var name = (r.name || "").replace(/"/g, '""');
+        var laps = r.laps;
+        csv += no + ',"' + bib + '","' + name + '",' + laps + "\n";
+      }
+
+      try {
+        var blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+        var url = window.URL ? URL.createObjectURL(blob) : null;
+
+        if (url) {
+          var a = document.createElement("a");
+          a.href = url;
+          a.download = "lap_results.csv";
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+        } else {
+          alert("このブラウザではCSVの自動ダウンロードに対応していません。");
+        }
+      } catch (e) {
+        alert("このブラウザではCSVの自動ダウンロードに対応していません。");
+      }
+    }
+
+    initState();
+    window.addEventListener("load", function () {
+      initControls();
+      renderTable();
+    });
+  </script>
+</body>
+</html>
