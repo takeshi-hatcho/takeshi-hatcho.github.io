@@ -69,12 +69,13 @@
       color: #333;
     }
 
-    .btn:active {
-      opacity: 0.85;
+    .btn-danger {
+      background: #e53935;
+      color: white;
     }
 
-    .table-wrapper {
-      overflow-x: auto;
+    .btn:active {
+      opacity: 0.85;
     }
 
     table {
@@ -99,20 +100,15 @@
     }
 
     th:nth-child(1), td:nth-child(1) { width: 8%; }
-    th:nth-child(2), td:nth-child(2) { width: 10%; }  /* ゼッケン細く */
+    th:nth-child(2), td:nth-child(2) { width: 10%; } /* ゼッケン細く */
     th:nth-child(3), td:nth-child(3) { width: 30%; }
     th:nth-child(4), td:nth-child(4) { width: 12%; }
-    th:nth-child(5), td:nth-child(5) { width: 40%; }  /* 操作欄広く */
+    th:nth-child(5), td:nth-child(5) { width: 40%; } /* 操作欄広く */
 
-    tr:last-child td {
-      border-bottom: none;
-    }
-
-    input[type="text"], input[type="number"].small {
+    input[type="text"] {
       width: 100%;
-      box-sizing: border-box;
       padding: 0.3rem;
-      font-size: 0.9rem;
+      box-sizing: border-box;
     }
 
     .lap-cell {
@@ -120,7 +116,6 @@
       font-weight: bold;
     }
 
-    /* ★操作ボタンを横に2.5倍ほど拡大★ */
     .row-buttons {
       display: flex;
       justify-content: center;
@@ -128,7 +123,7 @@
     }
 
     .row-buttons .btn {
-      min-width: 8rem;     /* ←ここがポイント（元3.2rem → 8rem） */
+      min-width: 8rem;   /* 2.5倍の横幅 */
       padding: 0.5rem 0;
       font-size: 1.1rem;
       border-radius: 0.6rem;
@@ -141,17 +136,12 @@
     tr.finished {
       background: #c8e6c9;
     }
-
-    .note {
-      margin-top: 0.4rem;
-      font-size: 0.8rem;
-      color: #555;
-    }
   </style>
 </head>
+
 <body>
   <header>
-    <h1>周回カウンター（5kmマラソン用）</h1>
+    <h1>周回カウンター（5kmマラソン）</h1>
     <p>1周120m ／ 目標周回数：42周（変更可能）</p>
   </header>
 
@@ -162,166 +152,173 @@
         <input id="goalLaps" type="number" min="1" value="42" />
       </label>
 
-      <button class="btn btn-secondary" id="resetAllButton">
-        全員リセット
-      </button>
-
-      <button class="btn btn-primary" id="exportCsvButton">
-        CSVダウンロード
-      </button>
-
-      <button class="btn btn-secondary" id="clearDataButton">
-        保存データ消去
-      </button>
+      <button class="btn btn-secondary" id="resetAllButton">全員リセット</button>
+      <button class="btn btn-primary" id="exportCsvButton">CSVダウンロード</button>
+      <button class="btn btn-secondary" id="clearDataButton">保存データ消去</button>
     </section>
 
-    <div class="note">
-      ・児童は最大10名まで登録できます。<br />
-      ・＋1 ボタンで周回数が増えます。<br />
-      ・−1 ボタンで減らせます。<br />
-      ・周回数が目標−5 周で黄色、達成で緑色になります。
-    </div>
-
-    <section class="table-wrapper">
-      <table>
-        <thead>
-          <tr>
-            <th>No.</th>
-            <th>ゼッケン</th>
-            <th>氏名</th>
-            <th>周回数</th>
-            <th>操作</th>
-          </tr>
-        </thead>
-        <tbody id="runnerTableBody"></tbody>
-      </table>
-    </section>
+    <table>
+      <thead>
+        <tr>
+          <th>No.</th>
+          <th>ゼッケン</th>
+          <th>氏名</th>
+          <th>周回数</th>
+          <th>操作</th>
+        </tr>
+      </thead>
+      <tbody id="runnerTableBody"></tbody>
+    </table>
   </main>
 
-  <script>
-    const MAX_RUNNERS = 10;
-    const STORAGE_KEY = "lapCounterData_v3";
+<script>
+  const MAX_RUNNERS = 10;
+  const STORAGE_KEY = "lapCounterData_v4";
 
-    let state = {
-      goalLaps: 42,
-      runners: []
-    };
+  let state = {
+    goalLaps: 42,
+    runners: []
+  };
 
-    function initState() {
-      let saved = null;
+  /* 初期化 */
+  function initState() {
+    let saved = null;
+    try {
+      saved = localStorage.getItem(STORAGE_KEY);
+    } catch {}
+
+    if (saved) {
       try {
-        saved = localStorage.getItem(STORAGE_KEY);
+        const parsed = JSON.parse(saved);
+        if (parsed.runners && typeof parsed.goalLaps === "number") {
+          state = parsed;
+        }
       } catch {}
+    }
 
-      if (saved) {
-        try {
-          const parsed = JSON.parse(saved);
-          if (parsed.runners && typeof parsed.goalLaps === "number") {
-            state = parsed;
-          }
-        } catch {}
+    while (state.runners.length < MAX_RUNNERS) {
+      state.runners.push({ bib: "", name: "", laps: 0 });
+    }
+  }
+
+  const saveState = () =>
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+
+  /* iPad対応 CSVダウンロード関数 */
+  function downloadCsv(csvText) {
+    const fileName = "lap_data.csv";
+    const ua = navigator.userAgent;
+    const isIOS = /iP(hone|od|ad)/.test(ua);
+
+    if (isIOS) {
+      // iPad/iPhone → 新しいタブで開いて保存させる
+      const dataUrl = "data:text/csv;charset=utf-8," + encodeURIComponent(csvText);
+      const win = window.open(dataUrl, "_blank");
+      if (!win) {
+        alert("CSV を開けませんでした。ポップアップブロックを解除してください。");
+      } else {
+        alert("開いた画面の共有ボタン（□↑）→『ファイルに保存』で保存できます。");
       }
-
-      while (state.runners.length < MAX_RUNNERS) {
-        state.runners.push({ bib: "", name: "", laps: 0 });
-      }
-    }
-
-    function saveState() {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-    }
-
-    function renderTable() {
-      const tbody = document.getElementById("runnerTableBody");
-      tbody.innerHTML = "";
-
-      state.runners.forEach((runner, index) => {
-        const tr = document.createElement("tr");
-
-        const goal = state.goalLaps;
-
-        if (runner.laps >= goal) tr.classList.add("finished");
-        else if (runner.laps >= goal - 5 && runner.laps > 0)
-          tr.classList.add("near-goal");
-
-        tr.innerHTML = `
-          <td>${index + 1}</td>
-          <td><input type="text" value="${runner.bib}" /></td>
-          <td><input type="text" value="${runner.name}" /></td>
-          <td class="lap-cell">${runner.laps}</td>
-          <td>
-            <div class="row-buttons">
-              <button class="btn btn-primary plus">＋1</button>
-              <button class="btn btn-secondary minus">−1</button>
-            </div>
-          </td>
-        `;
-
-        /* 入力欄バインド */
-        const inputs = tr.querySelectorAll("input");
-        inputs[0].addEventListener("input", e => {
-          state.runners[index].bib = e.target.value;
-          saveState();
-        });
-
-        inputs[1].addEventListener("input", e => {
-          state.runners[index].name = e.target.value;
-          saveState();
-        });
-
-        /* ボタン動作 */
-        tr.querySelector(".plus").onclick = () => {
-          state.runners[index].laps++;
-          saveState();
-          renderTable();
-        };
-
-        tr.querySelector(".minus").onclick = () => {
-          state.runners[index].laps = Math.max(0, state.runners[index].laps - 1);
-          saveState();
-          renderTable();
-        };
-
-        tbody.appendChild(tr);
-      });
-    }
-
-    /* 各種コントロール */
-    document.getElementById("goalLaps").onchange = e => {
-      state.goalLaps = Number(e.target.value);
-      saveState();
-      renderTable();
-    };
-
-    document.getElementById("resetAllButton").onclick = () => {
-      if (!confirm("全員の周回数を 0 にリセットしますか？")) return;
-      state.runners.forEach(r => (r.laps = 0));
-      saveState();
-      renderTable();
-    };
-
-    document.getElementById("clearDataButton").onclick = () => {
-      if (!confirm("保存データを完全に消去しますか？")) return;
-      localStorage.removeItem(STORAGE_KEY);
-      location.reload();
-    };
-
-    document.getElementById("exportCsvButton").onclick = () => {
-      let csv = "No,ゼッケン,氏名,周回数\n";
-      state.runners.forEach((r, i) => {
-        csv += `${i + 1},${r.bib},${r.name},${r.laps}\n`;
-      });
-
-      const blob = new Blob([csv], { type: "text/csv" });
+    } else {
+      // PCなど → 自動ダウンロード
+      const blob = new Blob([csvText], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = "lap_data.csv";
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
       a.click();
-    };
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+  }
 
-    /* 初期化 */
-    initState();
+  /* テーブル描画 */
+  function renderTable() {
+    const tbody = document.getElementById("runnerTableBody");
+    tbody.innerHTML = "";
+
+    state.runners.forEach((runner, index) => {
+      const tr = document.createElement("tr");
+
+      // 色分け
+      const goal = state.goalLaps;
+      if (runner.laps >= goal) tr.classList.add("finished");
+      else if (runner.laps >= goal - 5 && runner.laps > 0)
+        tr.classList.add("near-goal");
+
+      tr.innerHTML = `
+        <td>${index + 1}</td>
+        <td><input type="text" value="${runner.bib}" /></td>
+        <td><input type="text" value="${runner.name}" /></td>
+        <td class="lap-cell">${runner.laps}</td>
+        <td>
+          <div class="row-buttons">
+            <button class="btn btn-primary plus">＋1</button>
+            <button class="btn btn-secondary minus">−1</button>
+          </div>
+        </td>
+      `;
+
+      const inputs = tr.querySelectorAll("input");
+      inputs[0].addEventListener("input", e => {
+        state.runners[index].bib = e.target.value;
+        saveState();
+      });
+
+      inputs[1].addEventListener("input", e => {
+        state.runners[index].name = e.target.value;
+        saveState();
+      });
+
+      tr.querySelector(".plus").onclick = () => {
+        state.runners[index].laps++;
+        saveState();
+        renderTable();
+      };
+
+      tr.querySelector(".minus").onclick = () => {
+        state.runners[index].laps = Math.max(0, state.runners[index].laps - 1);
+        saveState();
+        renderTable();
+      };
+
+      tbody.appendChild(tr);
+    });
+  }
+
+  /* イベント類 */
+  document.getElementById("goalLaps").onchange = e => {
+    state.goalLaps = Number(e.target.value);
+    saveState();
     renderTable();
-  </script>
+  };
+
+  document.getElementById("resetAllButton").onclick = () => {
+    if (!confirm("全員の周回数を0にしますか？")) return;
+    state.runners.forEach(r => (r.laps = 0));
+    saveState();
+    renderTable();
+  };
+
+  document.getElementById("clearDataButton").onclick = () => {
+    if (!confirm("保存データを消去しますか？")) return;
+    localStorage.removeItem(STORAGE_KEY);
+    location.reload();
+  };
+
+  document.getElementById("exportCsvButton").onclick = () => {
+    let csv = "No,ゼッケン,氏名,周回数
+";
+    state.runners.forEach((r, i) => {
+      csv += `${i + 1},${r.bib},${r.name},${r.laps}
+`;
+    });
+    downloadCsv(csv);
+  };
+
+  initState();
+  renderTable();
+</script>
 </body>
 </html>
